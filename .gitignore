@@ -9,3 +9,6 @@ __pycache__/
 
 # Ignore output files
 *.txt
+
+# Ignore DB
+chroma_db/

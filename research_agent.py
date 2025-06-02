@@ -4,7 +4,9 @@ from langchain_openai import ChatOpenAI # For using OpenAI's chat model
 from langchain_core.prompts import ChatPromptTemplate # For creating chat prompts
 from langchain_core.output_parsers import PydanticOutputParser #For parsing the output to a Pydantic model
 from langchain.agents import create_tool_calling_agent, AgentExecutor # For creating an agent that can call tools
-from tools import wiki_search_tool, save_tool # Importing custom Wikipedia search tool
+from vectorDB import add_to_vector_store
+from tools import wiki_search_tool, save_tool, local_research_search # Importing custom Wikipedia search tool
+
 
 #Load environment variables from .env file
 load_dotenv()
@@ -24,17 +26,21 @@ prompt = ChatPromptTemplate.from_messages(
     [
         ("system",
          """
-         You are a research assistant tasked to acquire data on a topic to write a research paper. 
-         Answer the user query and use necessary tools.
-         I want the output in this format with no additional text\n{format_instructions}""",
-         ),
-        ("placeholder", "{chat_history}"), #chat_history is the conversation history
-        ("human","{query}"),
-        ("placeholder", "{agent_scratchpad}"), #agent_scratchpad is where the agent can write notes or thoughts
+         You are a research assistant tasked to acquire data on a topic to write a research paper.
+
+         You have access to a memory search tool (`local_research_search`) that retrieves past summaries.
+         Always try that first before calling Wikipedia or generating new information.
+
+         I want the output in this format with no additional text:
+         {format_instructions}
+         """),
+        ("placeholder", "{chat_history}"),
+        ("human", "{query}"),
+        ("placeholder", "{agent_scratchpad}")
     ]
 ).partial(format_instructions=parser.get_format_instructions())
 
-tools = [wiki_search_tool, save_tool]
+tools = [wiki_search_tool, save_tool, local_research_search]
 agent = create_tool_calling_agent(
     llm=llm,
     prompt=prompt,
@@ -51,8 +57,19 @@ agent_executor = AgentExecutor(
 query = input("Hello, I specialize in gathering research data. What can I help you research today? ")
 raw_response = agent_executor.invoke({"query": query})
 try:
-    # Attempt to parse the raw response using the Pydantic parser
     structured_response = parser.parse(raw_response['output'])
     print(structured_response)
+
+    # Add to vector DB (only if it's not junk)
+    add_to_vector_store(
+        topic=structured_response.topic,
+        summary=structured_response.summary,
+        metadata={
+            "tools_used": structured_response.tools_used,
+            "sources": structured_response.sources
+        },
+        query=query
+    )
+
 except Exception as e:
     print(f"Error parsing response: {e}", "Raw Response = ", raw_response)
