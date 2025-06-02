@@ -3,3 +3,9 @@ env/
 
 # Ignore environment variable files
 .env
+
+# Ignore pycache
+__pycache__/
+
+# Ignore output files
+*.txt
